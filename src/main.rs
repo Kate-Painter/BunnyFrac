@@ -102,7 +102,7 @@ fn create_mandelbrot(fractal: &Details) {
 
             let mut i: u32 = 0;
             while i < fractal.imax && z.norm() <= 2.0 {
-                z = c * c + z;
+                z = z * z + c;
                 i += 1;
             }
 

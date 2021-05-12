@@ -1,2 +1,5 @@
 /target
-egg.png
+*.png
+*.bmp
+*.jpeg
+*.jpg

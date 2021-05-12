@@ -1,15 +1,16 @@
 extern crate image;
 extern crate num_complex;
+
 use std::{env, process::exit, u8};
 
 struct Details {
     frac_type: String,
     imgx: u32,
     imgy: u32,
-    scalex: f32,
-    scaley: f32,
-    centerx: f32,
-    centery: f32,
+    scalex: f64,
+    scaley: f64,
+    centerx: f64,
+    centery: f64,
     imax: u32,
     filename: String,
 }
@@ -62,10 +63,10 @@ fn parse_args() -> Details {
     details.frac_type = args[1].to_string();
     details.imgx = size.next().unwrap().parse::<u32>().unwrap();
     details.imgy = size.next().unwrap().parse::<u32>().unwrap();
-    details.scalex = args[3].parse::<f32>().unwrap();
-    details.scaley = details.scalex * (details.imgy as f32 / details.imgx as f32);
-    details.centerx = center.next().unwrap().parse::<f32>().unwrap();
-    details.centery = center.next().unwrap().parse::<f32>().unwrap();
+    details.scalex = args[3].parse::<f64>().unwrap();
+    details.scaley = details.scalex * (details.imgy as f64 / details.imgx as f64);
+    details.centerx = center.next().unwrap().parse::<f64>().unwrap();
+    details.centery = center.next().unwrap().parse::<f64>().unwrap();
     details.imax = args[5].parse::<u32>().unwrap();
     details.filename = args[6].to_string();
 
@@ -73,29 +74,35 @@ fn parse_args() -> Details {
 }
 
 fn print_details(details: &Details) {
-    println!("Fractal type: {}", details.frac_type);
-    println!("Dimensions: {}x{}", details.imgx, details.imgy);
-    println!("Scale: {}:{}", details.scalex, details.scaley);
-    println!("Filename: {}", details.filename);
+
+    println!("┌────────────────────────────────┐");
+    println!("│Fractal type: {}                 │", details.frac_type);
+    println!("│Dimensions: {0:>5}x{1:<5}         │", details.imgx, details.imgy);
+    println!("│Scale: {0:>.4}:{1:<.4}            │", details.scalex, details.scaley);
+    println!("│Center: ({0:<5},{1:<5})           │", details.centerx, details.centery);
+    println!("│Maximum iterations: {0:<10}  │", details.imax);
+    println!("│Filename: {:<20}  │", details.filename);
+    println!("└────────────────────────────────┘");
 }
 
-fn pick_color(i: u32, imax: u32) -> image::Rgb<u8> {
-    let ratio = (i as f32 % 500 as f32) / 500 as f32;
-    let r = 100 + (ratio * 100.0) as u8;
-    let g = 0   + (ratio * 100.0) as u8;
-    let b = 100 + (ratio * 120.0) as u8;
+fn pick_color(i: u32) -> image::Rgb<u8> {
+    let ratio = (i as f64 % 500 as f64) / 500 as f64;
+    let r = 20  + (ratio * 235.0) as u8;
+    let g = 20  - (ratio *  20.0) as u8;
+    let b = 65  + (ratio * 190.0) as u8;
     return image::Rgb([r,g,b]);
 }
+
 fn create_mandelbrot(fractal: &Details) {
-    let scalefx = fractal.scalex / fractal.imgx as f32;
-    let scalefy = fractal.scaley / fractal.imgy as f32;
+    let scalefx = fractal.scalex / fractal.imgx as f64;
+    let scalefy = fractal.scaley / fractal.imgy as f64;
 
     let mut imgbuf = image::ImageBuffer::new(fractal.imgx, fractal.imgy);
-
+    let mut time: f64 = 0.0;
     for x in 0..fractal.imgx {
         for y in 0..fractal.imgy {
-            let cx = x as f32 * scalefx - (fractal.scalex / 2.0) + fractal.centerx;
-            let cy = y as f32 * scalefy - (fractal.scaley / 2.0) + fractal.centery;
+            let cx = x as f64 * scalefx - (fractal.scalex / 2.0) + fractal.centerx;
+            let cy = y as f64 * scalefy - (fractal.scaley / 2.0) + fractal.centery;
 
             let c = num_complex::Complex::new(cx, cy);
             let mut z = num_complex::Complex::new(0.0, 0.0);
@@ -112,21 +119,96 @@ fn create_mandelbrot(fractal: &Details) {
                 *pixel = image::Rgb([0, 0, 0]);
             }
             else {
-                *pixel = pick_color(i, fractal.imax);
+                *pixel = pick_color(i);
             }
         }
+        time += (1.0 / fractal.imgx as f64) * 100 as f64;
+        print!("\r  >>>> {:.2}% done", time);
     }
 
     imgbuf.save(&fractal.filename).unwrap();
 }
+
+fn create_julia(fractal: &Details) {
+    let scalefx = fractal.scalex / fractal.imgx as f64;
+    let scalefy = fractal.scaley / fractal.imgy as f64;
+
+    let mut imgbuf = image::ImageBuffer::new(fractal.imgx, fractal.imgy);
+    let mut time: f64 = 0.0;
+    for x in 0..fractal.imgx {
+        for y in 0..fractal.imgy {
+            let cx = x as f64 * scalefx - (fractal.scalex / 2.0) + fractal.centerx;
+            let cy = y as f64 * scalefy - (fractal.scaley / 2.0) + fractal.centery;
+
+            let c = num_complex::Complex::new(-0.7269, 0.1889);
+            let mut z = num_complex::Complex::new(cx, cy);
+
+            let mut i: u32 = 0;
+            while i < fractal.imax && z.norm() <= 2.0 {
+                z = z * z + c;
+                i += 1;
+            }
+            
+            let pixel = imgbuf.get_pixel_mut(x, y);
+            let image::Rgb(_data) = *pixel;
+            if i == fractal.imax {
+                *pixel = image::Rgb([0, 0, 0]);
+            }
+            else {
+                *pixel = pick_color(i);
+            }
+        }
+        time += (1.0 / fractal.imgx as f64) * 100 as f64;
+        print!("\r>>>> {:.2}% done", time);
+    }
+    imgbuf.save(&fractal.filename).unwrap();
+}
+
+fn create_burningship(fractal: &Details) {
+    let scalefx = fractal.scalex / fractal.imgx as f64;
+    let scalefy = fractal.scaley / fractal.imgy as f64;
+
+    let mut imgbuf = image::ImageBuffer::new(fractal.imgx, fractal.imgy);
+    let mut time: f64 = 0.0;
+    for x in 0..fractal.imgx {
+        for y in 0..fractal.imgy {
+            let cx = x as f64 * scalefx - (fractal.scalex / 2.0) + fractal.centerx;
+            let cy = y as f64 * scalefy - (fractal.scaley / 2.0) + fractal.centery;
+
+            let c = num_complex::Complex::new(cx, cy);
+            let mut z = num_complex::Complex::new(0.0, 0.0);
+
+            let mut i: u32 = 0;
+            while i < fractal.imax && z.norm() <= 2.0 {
+                z.re = f64::abs(z.re);
+                z.im = f64::abs(z.im);
+                z = z * z + c;
+                i += 1;
+            }
+            
+            let pixel = imgbuf.get_pixel_mut(x, y);
+            let image::Rgb(_data) = *pixel;
+            if i == fractal.imax {
+                *pixel = image::Rgb([0, 0, 0]);
+            }
+            else {
+                *pixel = pick_color(i);
+            }
+        }
+        time += (1.0 / fractal.imgx as f64) * 100 as f64;
+        print!("\r>>>> {:.2}% done", time);
+    }
+    imgbuf.save(&fractal.filename).unwrap();
+}
+
 fn main() {
     let fractal = parse_args();
     print_details(&fractal);
 
     match &fractal.frac_type as &str {
         "m" => create_mandelbrot(&fractal),
-        //"j" => create_julia(&fractal),
-        //"b" => create_brokenship(&fractal),
+        "j" => create_julia(&fractal),
+        "b" => create_burningship(&fractal),
         _ => {
             println!("Unrecognized fractal type.\n");
             print_usage();

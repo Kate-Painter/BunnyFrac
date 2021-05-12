@@ -60,6 +60,7 @@ fn parse_args() -> Details {
     let mut size = args[2].split('x');
     let mut center = args[4].split(',');
 
+    // Stuff console arguments into struct
     details.frac_type = args[1].to_string();
     details.imgx = size.next().unwrap().parse::<u32>().unwrap();
     details.imgy = size.next().unwrap().parse::<u32>().unwrap();
@@ -85,6 +86,9 @@ fn print_details(details: &Details) {
     println!("└────────────────────────────────┘");
 }
 
+/**
+ * Returns RGB color value for a given i: u32 value.
+ */
 fn pick_color(i: u32) -> image::Rgb<u8> {
     let ratio = (i as f64 % 500 as f64) / 500 as f64;
     let r = 20  + (ratio * 235.0) as u8;
@@ -93,28 +97,45 @@ fn pick_color(i: u32) -> image::Rgb<u8> {
     return image::Rgb([r,g,b]);
 }
 
-fn create_mandelbrot(fractal: &Details) {
+/**
+ * Draws and saves a fractal when provided with a &Details struct.
+ */
+fn create_fractal(fractal: &Details) {
+    // Find scale factor
     let scalefx = fractal.scalex / fractal.imgx as f64;
     let scalefy = fractal.scaley / fractal.imgy as f64;
-
+    
+    // Create image and set time to 0
     let mut imgbuf = image::ImageBuffer::new(fractal.imgx, fractal.imgy);
     let mut time: f64 = 0.0;
+
+    // Choose appropriate set algorithm based on frac_type in struct
+    let iterate: fn(&Details, f64, f64) -> u32;
+    match &fractal.frac_type as &str {
+        "m" => { iterate = self::mandelbrot_iter; },
+        "j" => { iterate = self::julia_iter; },
+        "b" => { iterate = self::burning_iter; },
+        _   => {  println!("Fractal type not found.");
+                print_usage();
+                exit(1); 
+               },
+    };
+
+    // Apply algorithm to all pixels/coordinates
     for x in 0..fractal.imgx {
         for y in 0..fractal.imgy {
+            // Find C value based on our chosen pixel and scale factor
             let cx = x as f64 * scalefx - (fractal.scalex / 2.0) + fractal.centerx;
-            let cy = y as f64 * scalefy - (fractal.scaley / 2.0) + fractal.centery;
+            let cy = y as f64 * scalefy - (fractal.scaley / 2.0) - fractal.centery;
 
-            let c = num_complex::Complex::new(cx, cy);
-            let mut z = num_complex::Complex::new(0.0, 0.0);
+            // Find i for the pixel
+            let i = iterate(fractal, cx, cy);
 
-            let mut i: u32 = 0;
-            while i < fractal.imax && z.norm() <= 2.0 {
-                z = z * z + c;
-                i += 1;
-            }
-
+            // Choose pixel in image
             let pixel = imgbuf.get_pixel_mut(x, y);
             let image::Rgb(_data) = *pixel;
+
+            // Choose color based on i value
             if i == fractal.imax {
                 *pixel = image::Rgb([0, 0, 0]);
             }
@@ -122,98 +143,64 @@ fn create_mandelbrot(fractal: &Details) {
                 *pixel = pick_color(i);
             }
         }
+        // Update loading timer
         time += (1.0 / fractal.imgx as f64) * 100 as f64;
-        print!("\r  >>>> {:.2}% done", time);
+        print!("\r>>>> {:.2}% done", time);
     }
 
     imgbuf.save(&fractal.filename).unwrap();
 }
 
-fn create_julia(fractal: &Details) {
-    let scalefx = fractal.scalex / fractal.imgx as f64;
-    let scalefy = fractal.scaley / fractal.imgy as f64;
+/**
+ * Finds out whether a provided C value is part of the mandelbrot set and returns the escape time as a u32.
+ */
+fn mandelbrot_iter(fractal: &Details, cx: f64, cy: f64) -> u32 {
+    let c = num_complex::Complex::new(cx, cy);
+    let mut z = num_complex::Complex::new(0.0, 0.0);
 
-    let mut imgbuf = image::ImageBuffer::new(fractal.imgx, fractal.imgy);
-    let mut time: f64 = 0.0;
-    for x in 0..fractal.imgx {
-        for y in 0..fractal.imgy {
-            let cx = x as f64 * scalefx - (fractal.scalex / 2.0) + fractal.centerx;
-            let cy = y as f64 * scalefy - (fractal.scaley / 2.0) + fractal.centery;
-
-            let c = num_complex::Complex::new(-0.7269, 0.1889);
-            let mut z = num_complex::Complex::new(cx, cy);
-
-            let mut i: u32 = 0;
-            while i < fractal.imax && z.norm() <= 2.0 {
-                z = z * z + c;
-                i += 1;
-            }
-            
-            let pixel = imgbuf.get_pixel_mut(x, y);
-            let image::Rgb(_data) = *pixel;
-            if i == fractal.imax {
-                *pixel = image::Rgb([0, 0, 0]);
-            }
-            else {
-                *pixel = pick_color(i);
-            }
-        }
-        time += (1.0 / fractal.imgx as f64) * 100 as f64;
-        print!("\r>>>> {:.2}% done", time);
+    let mut i: u32 = 0;
+    while i < fractal.imax && z.norm() <= 2.0 {
+        z = z * z + c;
+        i += 1;
     }
-    imgbuf.save(&fractal.filename).unwrap();
+    return i;
 }
 
-fn create_burningship(fractal: &Details) {
-    let scalefx = fractal.scalex / fractal.imgx as f64;
-    let scalefy = fractal.scaley / fractal.imgy as f64;
+/**
+ * Finds out whether a provided C value is part of the julia set and returns the escape time as a u32.
+ */
+fn julia_iter(fractal: &Details, zx: f64, zy: f64) -> u32 {
+    let c = num_complex::Complex::new(-0.7269, 0.1889);
+    let mut z = num_complex::Complex::new(zx, zy);
 
-    let mut imgbuf = image::ImageBuffer::new(fractal.imgx, fractal.imgy);
-    let mut time: f64 = 0.0;
-    for x in 0..fractal.imgx {
-        for y in 0..fractal.imgy {
-            let cx = x as f64 * scalefx - (fractal.scalex / 2.0) + fractal.centerx;
-            let cy = y as f64 * scalefy - (fractal.scaley / 2.0) + fractal.centery;
-
-            let c = num_complex::Complex::new(cx, cy);
-            let mut z = num_complex::Complex::new(0.0, 0.0);
-
-            let mut i: u32 = 0;
-            while i < fractal.imax && z.norm() <= 2.0 {
-                z.re = f64::abs(z.re);
-                z.im = f64::abs(z.im);
-                z = z * z + c;
-                i += 1;
-            }
-            
-            let pixel = imgbuf.get_pixel_mut(x, y);
-            let image::Rgb(_data) = *pixel;
-            if i == fractal.imax {
-                *pixel = image::Rgb([0, 0, 0]);
-            }
-            else {
-                *pixel = pick_color(i);
-            }
-        }
-        time += (1.0 / fractal.imgx as f64) * 100 as f64;
-        print!("\r>>>> {:.2}% done", time);
+    let mut i: u32 = 0;
+    while i < fractal.imax && z.norm() <= 2.0 {
+        z = z * z + c;
+        i += 1;
     }
-    imgbuf.save(&fractal.filename).unwrap();
+    return i;
+}
+
+/**
+ * Finds out whether a provided C value is part of the burning-ship set and returns the escape time as a u32.
+ */
+fn burning_iter(fractal: &Details, cx: f64, cy: f64) -> u32 {
+    let c = num_complex::Complex::new(cx, cy);
+    let mut z = num_complex::Complex::new(0.0, 0.0);
+
+    let mut i: u32 = 0;
+    while i < fractal.imax && z.norm() <= 2.0 {
+        z.re = f64::abs(z.re);
+        z.im = f64::abs(z.im);
+        z = z * z + c;
+        i += 1;
+    }
+    return i;
 }
 
 fn main() {
     let fractal = parse_args();
     print_details(&fractal);
-
-    match &fractal.frac_type as &str {
-        "m" => create_mandelbrot(&fractal),
-        "j" => create_julia(&fractal),
-        "b" => create_burningship(&fractal),
-        _ => {
-            println!("Unrecognized fractal type.\n");
-            print_usage();
-            exit(1);
-        }
-    };
+    create_fractal(&fractal);
 }
 

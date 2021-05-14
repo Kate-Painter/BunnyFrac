@@ -6,6 +6,8 @@ mod color;
 use crate::color::*;
 use std::{env, process::exit, u8};
 use std::fs::create_dir;
+use std::process::Command;
+use substring::Substring;
 
 struct Details {
     frac_type: String,
@@ -119,14 +121,44 @@ fn animate_zoom(mut fractal: Details, frames: u32, rate: f64) {
         exit(1);
     }
 
-    let dirname: String = fractal.filename;
+    let dirname: String = fractal.filename
+                                .to_string()
+                                .substring(0, fractal.filename
+                                                    .to_string()
+                                                    .find(".")
+                                                    .unwrap())
+                                .to_string();
+    
+    let file_ext: String = fractal.filename
+                                .to_string()
+                                .substring(fractal.filename
+                                                .to_string()
+                                                .find(".")
+                                                .unwrap() + 1,
+                                           fractal.filename.len())
+                                .to_string(); 
+
     create_dir(&dirname).expect("Unable to create animation directory");
 
     for n in 0..frames {
-        fractal.filename = format!("/{}/{:#05}.png", &dirname, n); 
+        fractal.filename = format!("./{}/{:#05}.png", &dirname, n); 
         // TODO some code to tighten boundries and shiddd
+        fractal.scalex = fractal.scalex * rate;
+        fractal.scaley = fractal.scalex * (fractal.imgy as f64 / fractal.imgx as f64);
         create_fractal(&fractal);
     }
+
+
+    Command::new("ffmpeg")
+            .args(&["-r", "30",
+                    "-f", "image2",
+                    "-s", &format!("{}x{}", fractal.imgx, fractal.imgy),
+                    "-i", &format!("./{}/%05d.{}", &dirname, &file_ext),
+                    "-c:v", "libvpx",
+                    "-b:v", "1M",
+                    &format!("{}.webm", dirname)])
+            .output()
+            .expect("Failed to spawn ffmpeg procress");
 }
 
 /**
@@ -241,9 +273,10 @@ fn burning_iter(fractal: &Details, cx: f64, cy: f64) -> u32 {
 }
 
 fn main() {
-    let mut fractal = parse_args();
+    let fractal = parse_args();
     validate_details(&fractal);
     print_details(&fractal);
     create_fractal(&fractal);
+    animate_zoom(fractal, 300, 0.99);
 }
 

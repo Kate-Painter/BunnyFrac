@@ -1,7 +1,11 @@
 extern crate image;
 extern crate num_complex;
 
+mod color;
+
+use crate::color::*;
 use std::{env, process::exit, u8};
+use std::fs::create_dir;
 
 struct Details {
     frac_type: String,
@@ -62,39 +66,67 @@ fn parse_args() -> Details {
 
     // Stuff console arguments into struct
     details.frac_type = args[1].to_string();
-    details.imgx = size.next().unwrap().parse::<u32>().unwrap();
-    details.imgy = size.next().unwrap().parse::<u32>().unwrap();
-    details.scalex = args[3].parse::<f64>().unwrap();
+    details.imgx = size.next().unwrap().parse::<u32>().expect("Invalid x resolution value");
+    details.imgy = size.next().unwrap().parse::<u32>().expect("Invalid y resolution value");
+    details.scalex = args[3].parse::<f64>().expect("Invalid provided scale value");
     details.scaley = details.scalex * (details.imgy as f64 / details.imgx as f64);
-    details.centerx = center.next().unwrap().parse::<f64>().unwrap();
-    details.centery = center.next().unwrap().parse::<f64>().unwrap();
-    details.imax = args[5].parse::<u32>().unwrap();
+    details.centerx = center.next().unwrap().parse::<f64>().expect("Invalid x center value");
+    details.centery = center.next().unwrap().parse::<f64>().expect("Invalid y center value");
+    details.imax = args[5].parse::<u32>().expect("Invalid imax value");
     details.filename = args[6].to_string();
 
     return details;
 }
 
+/**
+ * Check for bad things happening //TODO check for more bad stuff
+ */
+fn validate_details(details: &Details) {
+    if details.imgx > 99999|| details.imgy > 99999 {
+        println!("Resolution exceeds upper bounds");
+        print_usage();
+        exit(1);
+    }
+    if details.scalex <= 0.0 || details.scaley <= 0.0 {
+        println!("Invalid scale value");
+        print_usage();
+        exit(1);
+    }
+}
+
+/**
+ * Print helpful stuff to stdout
+ */
 fn print_details(details: &Details) {
 
     println!("┌────────────────────────────────┐");
     println!("│Fractal type: {}                 │", details.frac_type);
-    println!("│Dimensions: {0:>5}x{1:<5}         │", details.imgx, details.imgy);
-    println!("│Scale: {0:>.4}:{1:<.4}            │", details.scalex, details.scaley);
-    println!("│Center: ({0:<5},{1:<5})           │", details.centerx, details.centery);
+    println!("│Dimensions: {0:>5}x{1:<5} (\\___/) │", details.imgx, details.imgy);
+    println!("│Scale: {0:>.4}:{1:<.4}    (='.'=) │", details.scalex, details.scaley);
+    println!("│Center: ({0:<.2},{1:<.2})   (\")___(\")│", details.centerx, details.centery);
     println!("│Maximum iterations: {0:<10}  │", details.imax);
     println!("│Filename: {:<20}  │", details.filename);
     println!("└────────────────────────────────┘");
 }
 
-/**
- * Returns RGB color value for a given i: u32 value.
+/**   /   \    /   \   /
+ *   |    O|  |    O|  --
+ *    \   /    \   /   \
  */
-fn pick_color(i: u32) -> image::Rgb<u8> {
-    let ratio = (i as f64 % 500 as f64) / 500 as f64;
-    let r = 20  + (ratio * 235.0) as u8;
-    let g = 20  - (ratio *  20.0) as u8;
-    let b = 65  + (ratio * 190.0) as u8;
-    return image::Rgb([r,g,b]);
+fn animate_zoom(mut fractal: Details, frames: u32, rate: f64) {
+    if frames > 99999 { 
+        println!("Exceeded frame limit.");
+        exit(1);
+    }
+
+    let dirname: String = fractal.filename;
+    create_dir(&dirname).expect("Unable to create animation directory");
+
+    for n in 0..frames {
+        fractal.filename = format!("/{}/{:#05}.png", &dirname, n); 
+        // TODO some code to tighten boundries and shiddd
+        create_fractal(&fractal);
+    }
 }
 
 /**
@@ -115,10 +147,18 @@ fn create_fractal(fractal: &Details) {
         "m" => { iterate = self::mandelbrot_iter; },
         "j" => { iterate = self::julia_iter; },
         "b" => { iterate = self::burning_iter; },
-        _   => {  println!("Fractal type not found.");
+        _   => {
+                println!("Fractal type not found.");
                 print_usage();
                 exit(1); 
                },
+    };
+
+    let pick_color: fn(u32) -> image::Rgb<u8>;
+    match "b" {
+        "x" => { pick_color = violet_color; },
+        "b" => { pick_color = test_color;   },
+        _ => { exit(1); },
     };
 
     // Apply algorithm to all pixels/coordinates
@@ -145,7 +185,7 @@ fn create_fractal(fractal: &Details) {
         }
         // Update loading timer
         time += (1.0 / fractal.imgx as f64) * 100 as f64;
-        print!("\r>>>> {:.2}% done", time);
+        print!("\r >>>> {:.2}% done", time);
     }
 
     imgbuf.save(&fractal.filename).unwrap();
@@ -170,7 +210,9 @@ fn mandelbrot_iter(fractal: &Details, cx: f64, cy: f64) -> u32 {
  * Finds out whether a provided C value is part of the julia set and returns the escape time as a u32.
  */
 fn julia_iter(fractal: &Details, zx: f64, zy: f64) -> u32 {
-    let c = num_complex::Complex::new(-0.7269, 0.1889);
+    // TODO: Feed c value from details struct
+    //let c = num_complex::Complex::new(fractal.cx, fractal.cy);
+    let c = num_complex::Complex::new(-0.4, 0.6);
     let mut z = num_complex::Complex::new(zx, zy);
 
     let mut i: u32 = 0;
@@ -199,7 +241,8 @@ fn burning_iter(fractal: &Details, cx: f64, cy: f64) -> u32 {
 }
 
 fn main() {
-    let fractal = parse_args();
+    let mut fractal = parse_args();
+    validate_details(&fractal);
     print_details(&fractal);
     create_fractal(&fractal);
 }

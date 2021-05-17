@@ -4,3 +4,9 @@
 *.jpeg
 *.jpg
 *.ico
+/video
+/out
+/test
+*.mp4
+*.webm
+*.code-workspace
